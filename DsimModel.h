@@ -38,6 +38,8 @@ private:
 	UINT8 GetI();
 	UINT8 GetK();
 	UINT8 GetM();
+	UINT8 GetCI();
+
 
 	IINSTANCE* inst;
 	IDSIMCKT* ckt;

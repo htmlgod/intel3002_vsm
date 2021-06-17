@@ -41,24 +41,48 @@ VOID DsimModel::Propogate(ABSTIME time, UINT8 vala, UINT8 valb){
 	}
 }
 UINT8 DsimModel::GetI() {
-	UINT8 val = 0;
+	INT8 val = 0;
 
+	if (islow(pin_I1->istate())) {
+		val |= (1 << 1);
+	}
+	if (islow(pin_I0->istate())) {
+		val |= 1;
+	}
+
+	return val;
 	
+}
+
+UINT8 DsimModel::GetCI() {
+	UINT8 val = 0;
+	val |= islow(pin_CI->istate()) ? 1 : 0;
+
+	return val;
 }
 UINT8 DsimModel::GetK() {
 	UINT8 val = 0;
 
-	if (ishigh(pin_K1->istate())) {
+	if (islow(pin_K1->istate())) {
 		val |= (1 << 1);
 	}
-	if (ishigh(pin_K0->istate())) {
+	if (islow(pin_K0->istate())) {
 		val |= 1;
 	}
 
 	return val;
 }
 UINT8 DsimModel::GetM() {
+	UINT8 val = 0;
 
+	if (islow(pin_M1->istate())) {
+		val |= (1 << 1);
+	}
+	if (islow(pin_M0->istate())) {
+		val |= 1;
+	}
+
+	return val;
 }
 
 
@@ -304,7 +328,7 @@ VOID DsimModel::setup(IINSTANCE* instance, IDSIMCKT* dsimckt) {
 
 VOID DsimModel::clockstep(ABSTIME time, DSIMMODES mode) {
 
-	if (pin_CLK->isnegedge()) {
+	if (pin_CLK->isposedge()) {
 		DecodeAddress();
 		DecodeFGroup();
 		DecodeRGroup();
