@@ -1,3 +1,4 @@
+*.workspace
 .vs/
 Release/
 # Windows image file caches

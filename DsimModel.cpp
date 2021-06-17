@@ -106,7 +106,7 @@ VOID DsimModel::ExecuteF0(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		intel3002_reg.AC = intel3002_reg.REG[Address] + (intel3002_reg.AC | GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
+		intel3002_reg.AC = intel3002_reg.REG[Address] + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
 		intel3002_reg.REG[Address] = intel3002_reg.AC;
 		
 		break;
@@ -303,7 +303,8 @@ VOID DsimModel::setup(IINSTANCE* instance, IDSIMCKT* dsimckt) {
 }
 
 VOID DsimModel::clockstep(ABSTIME time, DSIMMODES mode) {
-	if (pin_CLK->isedge()) {
+
+	if (pin_CLK->isnegedge()) {
 		DecodeAddress();
 		DecodeFGroup();
 		DecodeRGroup();
