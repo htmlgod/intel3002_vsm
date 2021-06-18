@@ -30,6 +30,7 @@ private:
 	VOID ExecuteF4(void);
 	VOID ExecuteF5(void);
 	VOID ExecuteF6(void);
+	VOID ExecuteF7(void);
 	VOID Propogate(ABSTIME time, UINT8 vala, UINT8 valb);
 	VOID DecodeAddress();
 	VOID DecodeFGroup();
@@ -83,4 +84,7 @@ private:
 	UINT8 Rgroup;
 	UINT8 Fgroup;
 	UINT8 Address;
+
+	INT RO = -1;
+	INT CO = -1;
 };
