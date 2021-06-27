@@ -197,7 +197,7 @@ VOID DsimModel::ExecuteF1(void) {
 		
 		MEMORY[Address] = MEMORY[Address] + GetK() + GetCI();
 		MEMORY[MAR] = GetK() | MEMORY[Address];
-		CO = 0b1 & MEMORY[Address] >> 3;
+		ComputeCarryOut(MEMORY[Address]);
 
 		break; }
 	case 2: 
