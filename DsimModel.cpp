@@ -169,36 +169,25 @@ VOID DsimModel::ExecuteF0(void) {
 	switch (Rgroup)
 	{
 	case 1: {
-		UINT8 val = intel3002_reg.REG[Address] + (intel3002_reg.AC & GetK()) + GetCI();
+		UINT8 val = MEMORY[Address] + (MEMORY[AC] & GetK()) + GetCI();
 		ComputeCarryOut(val);
-		intel3002_reg.AC = val;
-		intel3002_reg.REG[Address] = intel3002_reg.AC;
+		MEMORY[AC] = val;
+		MEMORY[Address] = MEMORY[AC];
 		break; }
-	case 2:
-		if (Address == 0b1011) {
-			intel3002_reg.AC = GetM() + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
-			ComputeCarryOut(intel3002_reg.AC);
-		} else {
-			intel3002_reg.T = GetM() + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
-			ComputeCarryOut(intel3002_reg.T);
-		}
-		break;
-
+	case 2: {
+		UINT8 val = GetM() + (MEMORY[AC] & GetK()) + GetCI();
+		ComputeCarryOut(val);
+		MEMORY[Address] = val;
+		break; }
 	case 3:
-		if (Address == 0b1111) {
-			RO = GetLBit(intel3002_reg.AC) && !(GetLBit(GetI()) && GetLBit(GetK()));
-			intel3002_reg.AC = ((islow(pin_CI->istate()) ? 1 : 0) || ((GetHBit(GetI()) && GetHBit(GetK()) && GetHBit(intel3002_reg.AC)))) * BYTE(128) | ((intel3002_reg.AC << 1) >> 1);
-			intel3002_reg.AC = ((GetLBit(intel3002_reg.AC) && (GetLBit(GetI()) && GetLBit(GetK()))) || (GetHBit(intel3002_reg.AC) || (GetHBit(GetI()) && GetHBit(GetK())))) * BYTE(1) | ((intel3002_reg.AC >> 1) << 1);
-		}
-		else {
-			RO = GetLBit(intel3002_reg.T) && !(GetLBit(GetI()) && GetLBit(GetK()));
-			intel3002_reg.T = ((islow(pin_CI->istate()) ? 1 : 0) || ((GetHBit(GetI()) && GetHBit(GetK()) && GetHBit(intel3002_reg.T)))) * BYTE(128) | ((intel3002_reg.T << 1) >> 1);
-			intel3002_reg.T = ((GetLBit(intel3002_reg.T) && (GetLBit(GetI()) && GetLBit(GetK()))) || (GetHBit(intel3002_reg.T) || (GetHBit(GetI()) && GetHBit(GetK())))) * BYTE(1) | ((intel3002_reg.T >> 1) << 1);
-		}
+		RO = GetLBit(MEMORY[AC]) & (GetLBit(GetI()) & GetLBit(GetK()));
+		MEMORY[Address] = ((GetCI() || ((GetHBit(GetI()) && GetHBit(GetK()) && GetHBit(MEMORY[Address])))) * BYTE(2)) | ((MEMORY[Address] << 1) >> 1);
+		MEMORY[Address] = ((GetLBit(MEMORY[AC]) && (GetLBit(GetI()) && GetLBit(GetK()))) || (GetHBit(MEMORY[Address]) || (GetHBit(GetI()) && GetHBit(GetK())))) * BYTE(1) | ((MEMORY[Address] >> 1) << 1);
 		break;
 	default:
 		break;
 	}
+	Propogate(X, Y);
 }
 
 VOID DsimModel::ExecuteF1(void) {
@@ -206,115 +195,91 @@ VOID DsimModel::ExecuteF1(void) {
 	{
 	case 1: {
 		
-		intel3002_reg.REG[Address] = intel3002_reg.REG[Address] + GetK() + GetCI();
-		intel3002_reg.MAR = GetK() | intel3002_reg.REG[Address];
-		CO = 0b1 & intel3002_reg.REG[Address] >> 3;
-		
+		MEMORY[Address] = MEMORY[Address] + GetK() + GetCI();
+		MEMORY[MAR] = GetK() | MEMORY[Address];
+		CO = 0b1 & MEMORY[Address] >> 3;
+
 		break; }
-	case 2:
-		intel3002_reg.MAR = GetK() | GetM();
-		if (Address == 0b1011) {
-			intel3002_reg.AC = GetM() + GetK() + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = GetM() + GetK() + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+	case 2: 
+		MEMORY[MAR] = GetK() | GetM();
+		MEMORY[Address] = GetM() + GetK() + GetCI();
 		break;
 
 	case 3:
-		if (Address == 0b1111) {
-			intel3002_reg.AC = (~intel3002_reg.AC | GetK()) + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = (~intel3002_reg.T | GetK()) + (intel3002_reg.T & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+		MEMORY[Address] = (~MEMORY[Address] | GetK()) + (MEMORY[Address] & GetK()) + GetCI();
 		break;
 	default:
 		break;
 	}
+	ComputeCarryOut(MEMORY[Address]);
+	Propogate(X, Y);
 }
 
 VOID DsimModel::ExecuteF2(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		intel3002_reg.REG[Address] = intel3002_reg.AC & GetK() - 1 + (islow(pin_CI->istate()) ? 1 : 0);
+		MEMORY[Address] = MEMORY[AC] & GetK() - 1 + GetCI();
 		break;
 	case 2:
-		if (Address == 0b1011) {
-			intel3002_reg.AC = intel3002_reg.AC & GetK() - 1 + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = intel3002_reg.AC & GetK() - 1 + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+		MEMORY[Address] = MEMORY[AC] & GetK() - 1 + GetCI();
 		break;
 
 	case 3:
-		if (Address == 0b1111) {
-			intel3002_reg.AC = GetI() & GetK() - 1 + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = GetI() & GetK() - 1 + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+		MEMORY[Address] = GetI() & GetK() - 1 + GetCI();
 		break;
 	default:
 		break;
 	}
+	ComputeCarryOut(MEMORY[Address]);
+	Propogate(X, Y);
 }
 
 VOID DsimModel::ExecuteF3(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		intel3002_reg.REG[Address] = intel3002_reg.AC & GetK() + intel3002_reg.REG[Address] + (islow(pin_CI->istate()) ? 1 : 0);
+		MEMORY[Address] = MEMORY[AC] & GetK() + MEMORY[Address] + GetCI();
 		break;
 	case 2:
-		if (Address == 0b1011) {
-			intel3002_reg.AC = intel3002_reg.AC & GetK() + GetM() + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = intel3002_reg.AC & GetK() + GetM() + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+		MEMORY[Address] = MEMORY[AC] & GetK() + GetM() + GetCI();
 		break;
 
 	case 3:
-		if (Address == 0b1111) {
-			intel3002_reg.AC = GetI() & GetK() + intel3002_reg.AC + (islow(pin_CI->istate()) ? 1 : 0);
-		}
-		else {
-			intel3002_reg.T = GetI() & GetK() + intel3002_reg.T + (islow(pin_CI->istate()) ? 1 : 0);
-		}
+		MEMORY[Address] = GetI() & GetK() + MEMORY[Address] + GetCI();
 		break;
 	default:
 		break;
 	}
+	ComputeCarryOut(MEMORY[Address]);
+	Propogate(X, Y);
 }
 
 VOID DsimModel::ExecuteF4(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.REG[Address] & intel3002_reg.AC & GetK());
-		intel3002_reg.REG[Address] = intel3002_reg.AC & GetK() & intel3002_reg.REG[Address];
+		CO = (GetCI() | (MEMORY[Address] & MEMORY[AC] & GetK()));
+		MEMORY[Address] = MEMORY[AC] & GetK() & MEMORY[Address];
 		break;
 	case 2:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetM() & intel3002_reg.AC & GetK());
+		CO = (GetCI() | (GetM() & MEMORY[AC] & GetK()));
 		if (Address == 0b1011) {
-			intel3002_reg.AC = intel3002_reg.AC & GetK() & GetM();
+			MEMORY[AC] = MEMORY[AC] & GetK() & GetM();
 		}
 		else {
-			intel3002_reg.T = intel3002_reg.AC & GetK() & GetM();
+			MEMORY[T] = MEMORY[AC] & GetK() & GetM();
 		}
 		break;
 
 	case 3:
 		if (Address == 0b1111) {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.AC & GetI() & GetK());
-			intel3002_reg.AC = GetI() & GetK() & intel3002_reg.AC;
+			CO = (GetCI() | (MEMORY[AC] & GetI() & GetK()));
+			MEMORY[AC] = GetI() & GetK() & MEMORY[AC];
 		}
 		else {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.T & GetI() & GetK());
-			intel3002_reg.T = GetI() & GetK() & intel3002_reg.T;
+			CO = (GetCI() | (MEMORY[T] & GetI() & GetK()));
+			MEMORY[T] = GetI() & GetK() & MEMORY[T];
 		}
 		break;
 	default:
@@ -326,28 +291,28 @@ VOID DsimModel::ExecuteF5(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.REG[Address] & GetK());
-		intel3002_reg.REG[Address] = GetK() & intel3002_reg.REG[Address];
+		CO = (GetCI() | (MEMORY[Address] & GetK()));
+		MEMORY[Address] = GetK() & MEMORY[Address];
 		
 		break;
 	case 2:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetM() & GetK());
+		CO = (GetCI() | (GetM() & GetK()));
 		if (Address == 0b1011) {
-			intel3002_reg.AC = GetK() & GetM();
+			MEMORY[AC] = GetK() & GetM();
 		}
 		else {
-			intel3002_reg.T = GetK() & GetM();
+			MEMORY[T] = GetK() & GetM();
 		}
 		break;
 
 	case 3:
 		if (Address == 0b1111) {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.AC & GetK());
-			intel3002_reg.AC = GetK() & intel3002_reg.AC;
+			CO = (GetCI() | (MEMORY[AC] & GetK()));
+			MEMORY[AC] = GetK() & MEMORY[AC];
 		}
 		else {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.T & GetK());
-			intel3002_reg.T = GetK() & intel3002_reg.T;
+			CO = (GetCI() | (MEMORY[T] & GetK()));
+			MEMORY[T] = GetK() & MEMORY[T];
 		}
 		break;
 	default:
@@ -359,26 +324,26 @@ VOID DsimModel::ExecuteF6(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.AC & GetK());
-		intel3002_reg.REG[Address] = intel3002_reg.AC & GetK() & intel3002_reg.REG[Address];
+		CO = (islow(pin_CI->istate()) ? 1 : 0) | (MEMORY[AC] & GetK());
+		MEMORY[Address] = MEMORY[AC] & GetK() & MEMORY[Address];
 		break;
 	case 2:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.AC & GetK());
+		CO = (islow(pin_CI->istate()) ? 1 : 0) | (MEMORY[AC] & GetK());
 		if (Address == 0b1011) {
-			intel3002_reg.AC = intel3002_reg.AC & GetK() & GetM();
+			MEMORY[AC] = MEMORY[AC] & GetK() & GetM();
 		}
 		else {
-			intel3002_reg.T = intel3002_reg.AC & GetK() & GetM();
+			MEMORY[T] = MEMORY[AC] & GetK() & GetM();
 		}
 		break;
 
 	case 3:
 		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetI() & GetK());
 		if (Address == 0b1111) {
-			intel3002_reg.AC = GetI() & GetK() & intel3002_reg.AC;
+			MEMORY[AC] = GetI() & GetK() & MEMORY[AC];
 		}
 		else {
-			intel3002_reg.T = GetI() & GetK() & intel3002_reg.T;
+			MEMORY[T] = GetI() & GetK() & MEMORY[T];
 		}
 		break;
 	default:
@@ -390,27 +355,27 @@ VOID DsimModel::ExecuteF7(void) {
 	switch (Rgroup)
 	{
 	case 1:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.REG[Address] & intel3002_reg.AC & GetK());
-		intel3002_reg.REG[Address] = xnor(intel3002_reg.AC & GetK(), intel3002_reg.REG[Address]);
+		CO = (islow(pin_CI->istate()) ? 1 : 0) | (MEMORY[Address] & MEMORY[AC] & GetK());
+		MEMORY[Address] = xnor(MEMORY[AC] & GetK(), MEMORY[Address]);
 		break;
 	case 2:
-		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetM() & intel3002_reg.AC & GetK());
+		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetM() & MEMORY[AC] & GetK());
 		if (Address == 0b1011) {
-			intel3002_reg.AC = xnor(intel3002_reg.AC & GetK(), GetM());
+			MEMORY[AC] = xnor(MEMORY[AC] & GetK(), GetM());
 		}
 		else {
-			intel3002_reg.T = xnor(intel3002_reg.AC & GetK(), GetM());
+			MEMORY[T] = xnor(MEMORY[AC] & GetK(), GetM());
 		}
 		break;
 
 	case 3:
 		if (Address == 0b1111) {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.AC & GetI() & GetK());
-			intel3002_reg.AC = xnor(GetI() & GetK(), intel3002_reg.AC);
+			CO = (islow(pin_CI->istate()) ? 1 : 0) | (MEMORY[AC] & GetI() & GetK());
+			MEMORY[AC] = xnor(GetI() & GetK(), MEMORY[AC]);
 		}
 		else {
-			CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.T & GetI() & GetK());
-			intel3002_reg.T = xnor(GetI() & GetK(), intel3002_reg.T);
+			CO = (islow(pin_CI->istate()) ? 1 : 0) | (MEMORY[T] & GetI() & GetK());
+			MEMORY[T] = xnor(GetI() & GetK(), MEMORY[T]);
 		}
 		break;
 	default:
