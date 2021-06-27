@@ -1,64 +1,65 @@
 #include "StdAfx.h"
 #include "DsimModel.h"
 
-INT getLBit(const BYTE& byte) {
-	return (byte & BYTE(1)) == BYTE(1);
+UINT8 GetLBit(const UINT8& byte) {
+	return byte & 0b01;
 }
 
-INT getHBit(const BYTE& byte) {
-	return (byte & BYTE(128)) == BYTE(128);
+UINT8 GetHBit(const UINT8& byte) {
+	return ((byte & 0b10) >> 1);
 }
 
-BYTE xnor(const BYTE& byte1, const BYTE& byte2) {
+UINT8 xnor(const UINT8& byte1, const UINT8& byte2) {
 	return (~byte1 & ~byte2) || (byte1 & byte2);
+}
+
+VOID DsimModel::Ensure()
+{
+	for (int i = 0; i < 13; i++) {
+		MEMORY[i] &= 0b11;
+	}
 }
 
 VOID DsimModel::ResetCPU(ABSTIME time) {
 	// clear memory
-	intel3002_reg.MAR = 0b00;
-	intel3002_reg.AC = 0b00;
-	intel3002_reg.T = 0b00;
-	for (int i = 0; i < 10; i++) {
-		intel3002_reg.REG[i] = 0b00;
+	for (int i = 0; i < 13; i++) {
+		MEMORY[i] = 0b00;
 	}
-	// all outputs to HIGH
-	pin_RO->SetHigh;
-	pin_CO->SetHigh;
-	pin_X->SetHigh;
-	pin_Y->SetHigh;
-	pin_A0->SetHigh;
-	pin_A1->SetHigh;
-	pin_D0->SetHigh;
-	pin_D1->SetHigh;
+	pin_X->SetLow;
+	pin_Y->SetLow;
+
+	// all tristate outputs to FLT
+	pin_RO->SetFloat;
+	pin_CO->SetFloat;
+	pin_A0->SetFloat;
+	pin_A1->SetFloat;
+	pin_D0->SetFloat;
+	pin_D1->SetFloat;
 }
 
-VOID DsimModel::Propogate(ABSTIME time, UINT8 vala, UINT8 valb){
-	UINT8 a1, a0, b1, b0;
+VOID DsimModel::Propogate(UINT8 vala, UINT8 valb){
+	bool a1, a0, b1, b0;
 	a1 = vala & 0b10;
 	a0 = vala & 0b01;
 	b1 = valb & 0b10;
 	b0 = valb & 0b01;
 
-	if (a1 & b1 | a0 & b0) {
-		pin_X->SetHigh;
-	}
-	else {
-		pin_X->SetLow;
-	}
-	if (a1 & b1 | ((a1 | b1) & (a0 | b0))) {
-		pin_Y->SetHigh;
-	}
-	else {
-		pin_Y->SetLow;
-	}
+	X = a1 & b1 | a0 & b0;
+	Y = a1 & b1 | ((a1 | b1) & (a0 | b0));
 }
+
+VOID DsimModel::ComputeCarryOut(UINT8 val)
+{
+	CO = ((val & 0b100) >> 2);
+}
+
 UINT8 DsimModel::GetI() {
 	INT8 val = 0;
 
-	if (islow(pin_I1->istate())) {
+	if (pin_I1->isactive()) {
 		val |= (1 << 1);
 	}
-	if (islow(pin_I0->istate())) {
+	if (pin_I0->isactive()) {
 		val |= 1;
 	}
 
@@ -68,17 +69,16 @@ UINT8 DsimModel::GetI() {
 
 UINT8 DsimModel::GetCI() {
 	UINT8 val = 0;
-	val |= islow(pin_CI->istate()) ? 1 : 0;
-
+	val = pin_CI->isactive();
 	return val;
 }
 UINT8 DsimModel::GetK() {
 	UINT8 val = 0;
 
-	if (islow(pin_K1->istate())) {
+	if (pin_K1->isactive()) {
 		val |= (1 << 1);
 	}
-	if (islow(pin_K0->istate())) {
+	if (pin_K0->isactive()) {
 		val |= 1;
 	}
 
@@ -87,10 +87,10 @@ UINT8 DsimModel::GetK() {
 UINT8 DsimModel::GetM() {
 	UINT8 val = 0;
 
-	if (islow(pin_M1->istate())) {
+	if (pin_M1->isactive()) {
 		val |= (1 << 1);
 	}
-	if (islow(pin_M0->istate())) {
+	if (pin_M0->isactive()) {
 		val |= 1;
 	}
 
@@ -98,7 +98,7 @@ UINT8 DsimModel::GetM() {
 }
 
 
-VOID DsimModel::DecodeAddress()
+VOID DsimModel::GetAddress()
 {
 	UINT8 val = 0b0000;
 
@@ -130,40 +130,70 @@ VOID DsimModel::DecodeFGroup()
 
 VOID DsimModel::DecodeRGroup()
 {
-	if ((Address >= 0b0000 && Address < 0b1010) || (Address == 0b1100 || Address == 0b1101))
+	if ((Address >= 0b0000 && Address < 0b1010) || (Address == 0b1100 || Address == 0b1101)) {
 		Rgroup = 1;
+		if (Address == 0b1100)
+			Address = T;
+		else if (Address == 0b1101)
+			Address = AC;
+	}
 	else if (Address == 0b1010 || Address == 0b1011)
 		Rgroup = 2;
-	else 
+	else {
 		Rgroup = 3;
+		if (Address == 0b1110)
+			Address = T;
+		else
+			Address = AC;
+	}	
 }
-
+/*
+* Ñ F0 ïî F3 òû äîëæåí çàïóñêàòü ôóíêöèþ ComputeCarryOut äëÿ ðåãèñòðà, ãäå ïðîèñõîäèëà îïåðàöèÿ
+* 
+* À òàêæå Propogate äëÿ X è Y â F0 ïî F3 (ÎÑÒÀËÜÍÛÅ ÕÇ)
+*
+* Äåøèôðàòîðû êîððåêòíû, åñëè íàïèñàíî AT - òî ïðîñòî MEMORY[Address]
+*
+* AC - MEMORY[AC], T - MEMORY[T] ÄËß Ð ÃÐÓÏÏÛ 1, Rn - MEMORY[Address], ÄËß 2 È 3 ÑÌÎÒÐÈ ÂÅÐÕÍÅÅ ÏÐÅÄËÎÆÅÍÈÅ
+*
+* ÄËß CI ÂÛÇÛÂÀÉ GetCI()
+* XOR ÝÒÎ ^
+* Ñäåëàé òîëüêî f0 è f3, â îñòàëüíûõ ïîôèêñè îøèáêó, ÷òîá êîìïèëÿëîñü
+* 
+* 
+* 
+* 
+*
+*/
 VOID DsimModel::ExecuteF0(void) {
 	switch (Rgroup)
 	{
-	case 1:
-		intel3002_reg.AC = intel3002_reg.REG[Address] + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
+	case 1: {
+		UINT8 val = intel3002_reg.REG[Address] + (intel3002_reg.AC & GetK()) + GetCI();
+		ComputeCarryOut(val);
+		intel3002_reg.AC = val;
 		intel3002_reg.REG[Address] = intel3002_reg.AC;
-		
-		break;
+		break; }
 	case 2:
 		if (Address == 0b1011) {
 			intel3002_reg.AC = GetM() + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
+			ComputeCarryOut(intel3002_reg.AC);
 		} else {
 			intel3002_reg.T = GetM() + (intel3002_reg.AC & GetK()) + (islow(pin_CI->istate()) ? 1 : 0);
+			ComputeCarryOut(intel3002_reg.T);
 		}
 		break;
 
 	case 3:
 		if (Address == 0b1111) {
-			RO = getLBit(intel3002_reg.AC) && !(getLBit(GetI()) && getLBit(GetK()));
-			intel3002_reg.AC = ((islow(pin_CI->istate()) ? 1 : 0) || ((getHBit(GetI()) && getHBit(GetK()) && getHBit(intel3002_reg.AC)))) * BYTE(128) | ((intel3002_reg.AC << 1) >> 1);
-			intel3002_reg.AC = ((getLBit(intel3002_reg.AC) && (getLBit(GetI()) && getLBit(GetK()))) || (getHBit(intel3002_reg.AC) || (getHBit(GetI()) && getHBit(GetK())))) * BYTE(1) | ((intel3002_reg.AC >> 1) << 1);
+			RO = GetLBit(intel3002_reg.AC) && !(GetLBit(GetI()) && GetLBit(GetK()));
+			intel3002_reg.AC = ((islow(pin_CI->istate()) ? 1 : 0) || ((GetHBit(GetI()) && GetHBit(GetK()) && GetHBit(intel3002_reg.AC)))) * BYTE(128) | ((intel3002_reg.AC << 1) >> 1);
+			intel3002_reg.AC = ((GetLBit(intel3002_reg.AC) && (GetLBit(GetI()) && GetLBit(GetK()))) || (GetHBit(intel3002_reg.AC) || (GetHBit(GetI()) && GetHBit(GetK())))) * BYTE(1) | ((intel3002_reg.AC >> 1) << 1);
 		}
 		else {
-			RO = getLBit(intel3002_reg.T) && !(getLBit(GetI()) && getLBit(GetK()));
-			intel3002_reg.T = ((islow(pin_CI->istate()) ? 1 : 0) || ((getHBit(GetI()) && getHBit(GetK()) && getHBit(intel3002_reg.T)))) * BYTE(128) | ((intel3002_reg.T << 1) >> 1);
-			intel3002_reg.T = ((getLBit(intel3002_reg.T) && (getLBit(GetI()) && getLBit(GetK()))) || (getHBit(intel3002_reg.T) || (getHBit(GetI()) && getHBit(GetK())))) * BYTE(1) | ((intel3002_reg.T >> 1) << 1);
+			RO = GetLBit(intel3002_reg.T) && !(GetLBit(GetI()) && GetLBit(GetK()));
+			intel3002_reg.T = ((islow(pin_CI->istate()) ? 1 : 0) || ((GetHBit(GetI()) && GetHBit(GetK()) && GetHBit(intel3002_reg.T)))) * BYTE(128) | ((intel3002_reg.T << 1) >> 1);
+			intel3002_reg.T = ((GetLBit(intel3002_reg.T) && (GetLBit(GetI()) && GetLBit(GetK()))) || (GetHBit(intel3002_reg.T) || (GetHBit(GetI()) && GetHBit(GetK())))) * BYTE(1) | ((intel3002_reg.T >> 1) << 1);
 		}
 		break;
 	default:
@@ -174,10 +204,13 @@ VOID DsimModel::ExecuteF0(void) {
 VOID DsimModel::ExecuteF1(void) {
 	switch (Rgroup)
 	{
-	case 1:
+	case 1: {
+		
+		intel3002_reg.REG[Address] = intel3002_reg.REG[Address] + GetK() + GetCI();
 		intel3002_reg.MAR = GetK() | intel3002_reg.REG[Address];
-		intel3002_reg.REG[Address] = intel3002_reg.REG[Address] + GetK() + (islow(pin_CI->istate()) ? 1 : 0);
-		break;
+		CO = 0b1 & intel3002_reg.REG[Address] >> 3;
+		
+		break; }
 	case 2:
 		intel3002_reg.MAR = GetK() | GetM();
 		if (Address == 0b1011) {
@@ -295,6 +328,7 @@ VOID DsimModel::ExecuteF5(void) {
 	case 1:
 		CO = (islow(pin_CI->istate()) ? 1 : 0) | (intel3002_reg.REG[Address] & GetK());
 		intel3002_reg.REG[Address] = GetK() & intel3002_reg.REG[Address];
+		
 		break;
 	case 2:
 		CO = (islow(pin_CI->istate()) ? 1 : 0) | (GetM() & GetK());
@@ -451,36 +485,85 @@ VOID DsimModel::setup(IINSTANCE* instance, IDSIMCKT* dsimckt) {
 		pin_F[i] = inst->getdsimpin(s, true);
 	}
 
+	pin_CI->invert();
+	pin_M0->invert();
+	pin_M1->invert();
+	pin_I0->invert();
+	pin_I1->invert();
+	pin_K0->invert();
+	pin_K1->invert();
+	pin_EA->invert();
+	pin_ED->invert();
+	pin_RI->invert();
+
+	pin_RO->setstates(SHI, SLO, FLT);
+	pin_CO->setstates(SHI, SLO, FLT);
+	pin_A0->setstates(SHI, SLO, FLT);
+	pin_A1->setstates(SHI, SLO, FLT);
+	pin_D0->setstates(SHI, SLO, FLT);
+	pin_D1->setstates(SHI, SLO, FLT);
+	
+	pin_RO->invert();
+	pin_CO->invert();
+	pin_A0->invert();
+	pin_A1->invert();
+	pin_D0->invert();
+	pin_D1->invert();
+
 	// Connects function to handle Clock steps (instead of using "simulate")
 	pin_CLK->sethandler(this, (PINHANDLERFN)&DsimModel::clockstep);
-
 	ResetCPU(0);
 }
 
 VOID DsimModel::clockstep(ABSTIME time, DSIMMODES mode) {
 
 	if (pin_CLK->isposedge()) {
-		DecodeAddress();
+		GetAddress();
 		DecodeFGroup();
 		DecodeRGroup();
 
 		Execute();
+		Ensure();
+
+		if (CO != -1) {
+			if (CO) {
+				pin_CO->SetLow;
+			}
+			else {
+				pin_CO->SetHigh;
+			}
+		}
+		else {
+			pin_CO->drivetristate(time);
+		}
+		if (RO != -1) {
+			if (RO) {
+				pin_RO->SetLow;
+			}
+			else {
+				pin_RO->SetHigh;
+			}
+		}
+		else {
+			pin_RO->drivetristate(time);
+		}
 
 
-
+		pin_X->drivebool(time, X);
+		pin_Y->drivebool(time, Y);
 
 		if (islow(pin_EA->istate())) {
-			if (intel3002_reg.MAR & 0b10) {
-				pin_A1->SetHigh;
-			}
-			else {
+			if (MEMORY[MAR] & 0b10) {
 				pin_A1->SetLow;
 			}
-			if (intel3002_reg.MAR & 0b01) {
-				pin_A0->SetHigh;
+			else {
+				pin_A1->SetHigh;
+			}
+			if (MEMORY[MAR] & 0b01) {
+				pin_A0->SetLow;
 			}
 			else {
-				pin_A0->SetLow;
+				pin_A0->SetHigh;
 			}
 		}
 		else {
@@ -489,17 +572,17 @@ VOID DsimModel::clockstep(ABSTIME time, DSIMMODES mode) {
 		}
 
 		if (islow(pin_ED->istate())) {
-			if (intel3002_reg.AC & 0b10) {
-				pin_D1->SetHigh;
-			}
-			else {
+			if (MEMORY[AC] & 0b10) {
 				pin_D1->SetLow;
 			}
-			if (intel3002_reg.AC & 0b01) {
-				pin_D0->SetHigh;
+			else {
+				pin_D1->SetHigh;
+			}
+			if (MEMORY[AC] & 0b01) {
+				pin_D0->SetLow;
 			}
 			else {
-				pin_D0->SetLow;
+				pin_D0->SetHigh;
 			}
 		}
 		else {
@@ -507,6 +590,8 @@ VOID DsimModel::clockstep(ABSTIME time, DSIMMODES mode) {
 			pin_D0->SetFloat;
 		}
 	}
+	CO = -1;
+	RO = -1;
 }
 INT DsimModel::isdigital(CHAR* pinname)
 {
