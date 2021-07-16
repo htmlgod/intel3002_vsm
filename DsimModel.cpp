@@ -28,13 +28,13 @@ VOID DsimModel::ResetCPU(ABSTIME time) {
 	pin_X->SetLow;
 	pin_Y->SetLow;
 
-	// all tristate outputs to FLT
-	pin_RO->SetFloat;
-	pin_CO->SetFloat;
-	pin_A0->SetFloat;
-	pin_A1->SetFloat;
-	pin_D0->SetFloat;
-	pin_D1->SetFloat;
+	// all tristate outputs to High
+	pin_RO->SetHigh;
+	pin_CO->SetHigh;
+	pin_A0->SetHigh;
+	pin_A1->SetHigh;
+	pin_D0->SetHigh;
+	pin_D1->SetHigh;
 }
 
 VOID DsimModel::Propogate(UINT8 vala, UINT8 valb){
